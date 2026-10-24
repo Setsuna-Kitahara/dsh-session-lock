@@ -1,7 +1,7 @@
 {
   "name": "dsh-session-lock",
   "version": "0.1.0",
-  "description": "Lock DeepSeek Harness sessions so they cannot be archived. 锁定 DSH 会话，阻止其被归档。",
+  "description": "Add a per-session lock to the DSH Web sidebar; archiving a locked session through the client is refused. 在 DSH 侧栏给会话加锁，经客户端归档时会被拒绝。",
   "license": "MIT",
   "author": "Setsuna-Kitahara",
   "repository": {

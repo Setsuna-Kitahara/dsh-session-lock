@@ -1,12 +1,14 @@
 # dsh-session-lock
 
-给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）的会话上一把锁：**锁住的会话，任何归档路径都动不了它。**
+给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）的会话上一把锁：**锁住的会话，浏览器侧的归档入口都动不了它。**
 
 > DSH's sidebar **archive** hides a session from the list while keeping its data on disk.
-> This plugin adds a lock button to every sidebar row; a locked session is refused by every
-> archive path — the ⋮ menu, another plugin, or a maintenance script calling
-> `workspaces.archiveSession`. The host half also exposes an `archive-inactive` route that
-> bulk-archives stale sessions while **always** skipping the locked ones.
+> This plugin adds a lock button to every sidebar row; a locked session is refused when it is
+> archived through the client-side `workspaces.archiveSession` — the ⋮ menu, or another plugin
+> calling that same client method. Calls that reach the host registry
+> (`workspaceRegistry.archiveSession`) directly are **not** intercepted. The host half also
+> exposes an `archive-inactive` route that bulk-archives stale sessions while **always**
+> skipping the locked ones.
 
 MIT · 零运行时依赖 · 需要 DSH `>= 0.1.5-rc.1`
 
@@ -17,17 +19,17 @@ MIT · 零运行时依赖 · 需要 DSH `>= 0.1.5-rc.1`
 DSH 侧栏的「归档」是一个**隐藏但不删数据**的动作：点一下，会话就从列表里消失了。
 
 - 手滑点错菜单，正在跟的会话就不见了；
-- 批量整理脚本、维护任务、别的插件走 `workspaces.archiveSession` 批量归档时，分不清哪些是你还要用的；
+- 别的插件走客户端 `workspaces.archiveSession` 批量归档时，分不清哪些是你还要用的；
 - 归档是**不可逆的 UI 操作**（数据还在 `$DSH_HOME/sessions/` 里，但要找回来得手动翻目录）。
 
-`dsh-session-lock` 把这些会话挑出来锁上：锁在宿主里，和浏览器无关；锁定之后所有归档路径都会被拒绝，并且告诉你原因。
+`dsh-session-lock` 把这些会话挑出来锁上：锁清单存在宿主里，和浏览器无关；锁定之后经客户端触发的归档都会被拒绝，并且告诉你原因。
 
 ## 特性
 
 | 特性 | 说明 |
 | --- | --- |
 | 侧栏锁按钮 | 每个会话行一个 20×20 的锁图标：空心锁 = 未锁，琥珀色实心锁 = 已锁，同时该行左侧有一条琥珀色细边 |
-| 全路径拦截 | 侧栏 ⋮ 菜单、其它插件、脚本调用的 `workspaces.archiveSession` 都会被拦下，弹提示说明原因，会话不会被隐藏 |
+| 客户端侧拦截 | 经客户端 `workspaces.archiveSession` 的归档——侧栏 ⋮ 菜单、其它插件调用的同一个方法——都会被拦下，弹提示说明原因，会话不会被隐藏；直接打到宿主 `workspaceRegistry.archiveSession` 的调用不在拦截范围内 |
 | 宿主持久化 | 锁清单在 `$DSH_HOME/plugin-data/dsh-session-lock/locks.json`，换浏览器、清缓存、重启 dsh 都在 |
 | 批量归档不活跃会话 | 宿主路由 `POST /plugins/dsh-session-lock/archive-inactive`，供每日维护任务调用；**上锁的会话永远被跳过** |
 | 零运行时依赖 | 浏览器半边是纯 DOM + 一个 `fetch`，不 require 任何宿主内部包，宿主内部包改名不会影响它 |
@@ -128,6 +130,7 @@ curl -sS -X POST http://127.0.0.1:3080/plugins/dsh-session-lock/archive-inactive
 诚实地说清楚边界，比事后解释便宜：
 
 - **只拦「归档」，不拦「彻底删除」。** 删除走的是另一条链路（`dsh-archived-chats` 等），本插件不接管。
+- **拦截面只到客户端。** 包裹的是浏览器侧 `workspaces.archiveSession` 这一处方法引用；宿主侧 `workspaceRegistry.archiveSession` 没有被包装——别的插件或脚本绕过客户端、直接调宿主注册表时，锁不会生效。要覆盖那一条，需要在宿主侧包装并向官方提，而不是在客户端假装拦住了。
 - **浏览器半边是 fail-open，宿主半边是 fail-closed。** 客户端拦截器读不到锁清单时账本视为空，归档会正常执行——在「拦下一个用户没锁的会话」和「放走一个用户锁了的会话」之间，客户端侧选了后者（读失败会在控制台留 warn 并弹提示条）。而 `archive-inactive` 相反：读不出锁清单就整次拒绝。
 - **多标签页不做实时同步。** 客户端在加载时读一次锁清单，之后每次切换锁都会重读；另一个标签页里的改动要等本页下一次切换或刷新才可见。宿主账本始终是唯一事实来源，所以不会写错。
 - **宿主半边改动不参与 HMR**（只有客户端半边会），改完要重启 `dsh-web`。
